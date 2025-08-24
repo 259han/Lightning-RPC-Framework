@@ -1,0 +1,3 @@
+json=com.rpc.serialize.JsonSerializer
+hessian=com.rpc.serialize.HessianSerializer
+protobuf=com.rpc.serialize.ProtobufSerializer

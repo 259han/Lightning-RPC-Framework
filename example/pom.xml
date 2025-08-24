@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>rpc-framework</artifactId>
+        <groupId>com.rpc</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>example</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.rpc</groupId>
+            <artifactId>rpc-server</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.rpc</groupId>
+            <artifactId>rpc-client</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <!-- 全局配置UTF-8编码 -->
+                    <systemProperties>
+                        <systemProperty>
+                            <key>file.encoding</key>
+                            <value>UTF-8</value>
+                        </systemProperty>
+                        <systemProperty>
+                            <key>console.encoding</key>
+                            <value>UTF-8</value>
+                        </systemProperty>
+                        <systemProperty>
+                            <key>sun.jnu.encoding</key>
+                            <value>UTF-8</value>
+                        </systemProperty>
+                        <systemProperty>
+                            <key>user.timezone</key>
+                            <value>Asia/Shanghai</value>
+                        </systemProperty>
+                    </systemProperties>
+                </configuration>
+                <executions>
+                    <!-- 基础功能测试 -->
+                    <execution>
+                        <id>basic-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.BasicFunctionalityTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 综合功能测试 -->
+                    <execution>
+                        <id>comprehensive-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.ComprehensiveTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 性能测试 -->
+                    <execution>
+                        <id>performance-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.SerializationPerformanceTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 集成测试 -->
+                    <execution>
+                        <id>integration-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.IntegrationTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 高级功能测试 -->
+                    <execution>
+                        <id>advanced-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.AdvancedFeaturesTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 新增功能测试 -->
+                    <execution>
+                        <id>new-features-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.NewFeaturesTest</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

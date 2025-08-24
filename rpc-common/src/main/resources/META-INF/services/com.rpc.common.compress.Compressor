@@ -1,0 +1,4 @@
+none=com.rpc.common.compress.NoneCompressor
+gzip=com.rpc.common.compress.GzipCompressor
+snappy=com.rpc.common.compress.SnappyCompressor
+lz4=com.rpc.common.compress.Lz4Compressor
