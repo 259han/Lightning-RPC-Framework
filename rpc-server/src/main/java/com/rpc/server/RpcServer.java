@@ -3,6 +3,9 @@ package com.rpc.server;
 import com.rpc.common.registry.ServiceRegistry;
 import com.rpc.protocol.codec.RpcMessageDecoder;
 import com.rpc.protocol.codec.RpcMessageEncoder;
+import com.rpc.server.interceptor.RateLimitInterceptor;
+import com.rpc.server.interceptor.SecurityInterceptor;
+import com.rpc.server.interceptor.RpcInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -16,11 +19,13 @@ import io.netty.handler.logging.LoggingHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * RPC服务器
+ * RPC服务器 - 支持拦截器
  */
 @Slf4j
 public class RpcServer {
@@ -28,11 +33,56 @@ public class RpcServer {
     private final int port;
     private final ServiceRegistry serviceRegistry;
     private final Map<String, Object> serviceMap = new ConcurrentHashMap<>();
+    private final List<RpcInterceptor> interceptors = new ArrayList<>();
     
     public RpcServer(String host, int port, ServiceRegistry serviceRegistry) {
         this.host = host;
         this.port = port;
         this.serviceRegistry = serviceRegistry;
+        
+        // 默认添加拦截器
+        addDefaultInterceptors();
+    }
+    
+    /**
+     * 添加默认拦截器
+     */
+    private void addDefaultInterceptors() {
+        // 添加安全认证拦截器
+        SecurityInterceptor securityInterceptor = new SecurityInterceptor(true);
+        addInterceptor(securityInterceptor);
+        
+        // 添加限流拦截器
+        RateLimitInterceptor rateLimitInterceptor = new RateLimitInterceptor(true, true, true, true, true);
+        addInterceptor(rateLimitInterceptor);
+        
+        log.info("已添加默认拦截器: 安全认证拦截器, 限流拦截器");
+    }
+    
+    /**
+     * 添加拦截器
+     */
+    public void addInterceptor(RpcInterceptor interceptor) {
+        if (interceptor != null) {
+            interceptors.add(interceptor);
+            log.info("添加拦截器: {}", interceptor.getClass().getSimpleName());
+        }
+    }
+    
+    /**
+     * 移除拦截器
+     */
+    public void removeInterceptor(RpcInterceptor interceptor) {
+        if (interceptors.remove(interceptor)) {
+            log.info("移除拦截器: {}", interceptor.getClass().getSimpleName());
+        }
+    }
+    
+    /**
+     * 获取所有拦截器
+     */
+    public List<RpcInterceptor> getInterceptors() {
+        return new ArrayList<>(interceptors);
     }
     
     /**
@@ -69,7 +119,7 @@ public class RpcServer {
                         protected void initChannel(SocketChannel ch) {
                             ch.pipeline().addLast(new RpcMessageDecoder());
                             ch.pipeline().addLast(new RpcMessageEncoder());
-                            ch.pipeline().addLast(new RpcServerHandler(serviceMap));
+                            ch.pipeline().addLast(new RpcServerHandler(serviceMap, interceptors));
                         }
                     });
             

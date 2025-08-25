@@ -72,6 +72,18 @@ mvn exec:java@new-features-test
 - LZ4压缩算法
 - 压缩性能对比
 
+### 7. 性能监控测试
+**目标**: 验证连接池优化和性能指标收集功能
+**执行命令**:
+```bash
+mvn exec:java@monitoring-test
+```
+**测试内容**:
+- 连接池管理和优化
+- 性能指标收集
+- 实时监控和统计
+- 连接池统计分析
+
 ## 快速测试执行顺序
 
 1. **编译项目**
@@ -104,7 +116,12 @@ mvn exec:java@advanced-test
 mvn exec:java@new-features-test
 ```
 
-7. **集成测试**（可选，需要ZooKeeper）
+7. **性能监控测试**
+```bash
+mvn exec:java@monitoring-test
+```
+
+8. **集成测试**（可选，需要ZooKeeper）
 ```bash
 mvn exec:java@integration-test
 ```

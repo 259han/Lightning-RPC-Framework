@@ -94,6 +94,27 @@
                             <mainClass>com.rpc.example.NewFeaturesTest</mainClass>
                         </configuration>
                     </execution>
+                    <!-- 性能监控测试 -->
+                    <execution>
+                        <id>monitoring-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.PerformanceMonitoringTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 异步优化测试 -->
+                    <execution>
+                        <id>async-optimization-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.AsyncOptimizationTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 安全认证和限流测试 -->
+                    <execution>
+                        <id>security-ratelimit-test</id>
+                        <configuration>
+                            <mainClass>com.rpc.example.SecurityAndRateLimitTest</mainClass>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

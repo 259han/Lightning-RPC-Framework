@@ -4,7 +4,10 @@ import com.rpc.common.circuitbreaker.CircuitBreaker;
 import com.rpc.common.circuitbreaker.CircuitBreakerManager;
 import com.rpc.common.config.RpcConfig;
 import com.rpc.common.exception.RpcException;
+import com.rpc.common.metrics.MetricsManager;
 import com.rpc.common.retry.RetryPolicy;
+import com.rpc.common.shutdown.GracefulShutdownManager;
+import com.rpc.common.shutdown.MetricsShutdownHook;
 import com.rpc.common.trace.TraceManager;
 import com.rpc.common.trace.TraceContext;
 import com.rpc.common.trace.LogTraceCollector;
@@ -28,6 +31,10 @@ public class RpcClient {
     private final RpcConfig config;
     private final CircuitBreakerManager circuitBreakerManager;
     private final TraceManager traceManager;
+    private String globalAuthToken; // 全局认证Token
+    private final MetricsManager metricsManager;
+    private final AsyncRpcClient asyncRpcClient;
+    private final GracefulShutdownManager shutdownManager;
     
     // 兼容旧的构造函数
     public RpcClient(RpcRequestTransport requestTransport, long timeout) {
@@ -40,9 +47,23 @@ public class RpcClient {
         this.circuitBreakerManager = CircuitBreakerManager.getInstance();
         this.circuitBreakerManager.setConfig(config);
         this.traceManager = TraceManager.getInstance();
+        this.metricsManager = MetricsManager.getInstance();
+        this.shutdownManager = GracefulShutdownManager.getInstance();
+        
+        // 初始化异步RPC客户端
+        this.asyncRpcClient = new AsyncRpcClient(requestTransport, config);
         
         // 添加默认的日志追踪收集器
         this.traceManager.addCollector(new LogTraceCollector());
+        
+        // 注册关闭钩子
+        this.shutdownManager.registerShutdownHook(new RpcClientShutdownHook(this, "DefaultRpcClient"));
+        this.shutdownManager.registerShutdownHook(new MetricsShutdownHook(metricsManager));
+        
+        // 注意：不自动启用定期报告，由用户根据需要手动启用
+        // 如果需要启用定期报告，可以调用：metricsManager.enableReporting(30)
+        
+        log.info("RpcClient初始化完成，支持异步调用和优雅关闭");
     }
     
     /**
@@ -87,10 +108,13 @@ public class RpcClient {
             String serviceName = interfaceClass.getName();
             String methodName = method.getName();
             
-            // 开始链路追踪
+            // 开始链路追踪和性能监控
             TraceContext trace = traceManager.startTrace(serviceName, methodName);
             trace.addTag("client.version", version);
             trace.addTag("client.group", group);
+            
+            long startTime = System.currentTimeMillis();
+            metricsManager.recordThroughput(serviceName, methodName);
             
             try {
                 // 检查熔断器
@@ -98,6 +122,8 @@ public class RpcClient {
                 if (config.isCircuitBreakerEnabled()) {
                     circuitBreaker = circuitBreakerManager.getCircuitBreaker(serviceName);
                     if (!circuitBreaker.allowRequest()) {
+                        metricsManager.recordError(serviceName, methodName, 
+                            new RpcException("服务熔断器开启"));
                         throw new RpcException("服务 [" + serviceName + "] 熔断器开启，拒绝请求");
                     }
                 }
@@ -110,20 +136,33 @@ public class RpcClient {
                         .parameters(args)
                         .version(version)
                         .group(group)
+                        .authToken(globalAuthToken) // 设置认证Token
+                        .timestamp(System.currentTimeMillis())
                         .build();
                 
                 // 执行带重试的调用
                 Object result = executeWithRetry(request, circuitBreaker, serviceName, methodName);
                 
-                // 记录成功
+                // 记录成功和响应时间
+                long duration = System.currentTimeMillis() - startTime;
+                metricsManager.recordSuccess(serviceName, methodName);
+                metricsManager.recordRequestTime(serviceName, methodName, duration);
+                
                 trace.addTag("result.status", "success");
+                trace.addTag("response.time", String.valueOf(duration) + "ms");
                 traceManager.finishTrace();
                 
                 return result;
                 
             } catch (Throwable throwable) {
-                // 记录失败
+                // 记录失败和响应时间
+                long duration = System.currentTimeMillis() - startTime;
+                metricsManager.recordError(serviceName, methodName, throwable);
+                metricsManager.recordRequestTime(serviceName, methodName, duration);
+                
                 trace.addTag("result.status", "error");
+                trace.addTag("response.time", String.valueOf(duration) + "ms");
+                trace.addTag("error.message", throwable.getMessage());
                 traceManager.finishTraceWithError(throwable);
                 throw throwable;
             }
@@ -227,12 +266,111 @@ public class RpcClient {
     }
     
     /**
+     * 获取指标管理器
+     */
+    public MetricsManager getMetricsManager() {
+        return metricsManager;
+    }
+    
+    /**
+     * 获取性能指标快照
+     */
+    public com.rpc.common.metrics.MetricsSnapshot getMetricsSnapshot(String serviceName) {
+        return metricsManager.getSnapshot(serviceName);
+    }
+    
+    /**
+     * 获取所有服务的性能指标快照
+     */
+    public com.rpc.common.metrics.MetricsSnapshot getAllMetricsSnapshot() {
+        return metricsManager.getAllSnapshot();
+    }
+    
+    /**
+     * 手动生成性能报告
+     */
+    public void generateMetricsReport() {
+        metricsManager.generateManualReport();
+    }
+    
+    /**
+     * 获取异步RPC客户端
+     */
+    public AsyncRpcClient getAsyncClient() {
+        return asyncRpcClient;
+    }
+    
+    /**
+     * 异步调用RPC方法
+     */
+    public <T> CompletableFuture<RpcResponse<T>> asyncCall(RpcRequest request) {
+        return asyncRpcClient.asyncCall(request);
+    }
+    
+    /**
+     * 批量调用RPC方法
+     */
+    public <T> CompletableFuture<java.util.List<RpcResponse<T>>> batchCall(java.util.List<RpcRequest> requests) {
+        return asyncRpcClient.batchCall(requests);
+    }
+    
+    /**
+     * 获取异步调用统计信息
+     */
+    public AsyncRpcClient.AsyncCallStats getAsyncStats() {
+        return asyncRpcClient.getStats();
+    }
+    
+    /**
+     * 启用优雅关闭
+     */
+    public void enableGracefulShutdown() {
+        log.info("已启用优雅关闭，注册了 {} 个关闭钩子", shutdownManager.getShutdownHookCount());
+    }
+    
+    /**
+     * 手动触发优雅关闭
+     */
+    public void gracefulShutdown() {
+        shutdownManager.shutdown();
+    }
+    
+    /**
      * 关闭客户端
      */
     public void shutdown() {
+        log.info("开始关闭RpcClient...");
+        
+        // 关闭异步客户端
+        if (asyncRpcClient != null) {
+            asyncRpcClient.close();
+        }
+        
+        // 关闭传输层
         if (requestTransport != null) {
             requestTransport.close();
         }
+        
+        // 清理熔断器
         circuitBreakerManager.clear();
+        
+        log.info("RpcClient已关闭");
+        // 注意：不关闭全局的MetricsManager和ShutdownManager，因为可能被其他客户端使用
+    }
+    
+    /**
+     * 设置全局认证Token
+     */
+    public void setGlobalAuthToken(String authToken) {
+        this.globalAuthToken = authToken;
+        log.info("设置全局认证Token: {}...", 
+                authToken != null ? authToken.substring(0, Math.min(10, authToken.length())) : "null");
+    }
+    
+    /**
+     * 获取全局认证Token
+     */
+    public String getGlobalAuthToken() {
+        return globalAuthToken;
     }
 }

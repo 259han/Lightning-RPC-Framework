@@ -5,23 +5,27 @@ import com.rpc.common.exception.ServiceNotFoundException;
 import com.rpc.protocol.RpcMessage;
 import com.rpc.protocol.RpcRequest;
 import com.rpc.protocol.RpcResponse;
+import com.rpc.server.interceptor.RpcInterceptor;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
 
 /**
- * RPC服务端处理器
+ * RPC服务端处理器 - 支持拦截器
  */
 @Slf4j
 public class RpcServerHandler extends SimpleChannelInboundHandler<RpcMessage> {
     private final Map<String, Object> serviceMap;
+    private final List<RpcInterceptor> interceptors;
     
-    public RpcServerHandler(Map<String, Object> serviceMap) {
+    public RpcServerHandler(Map<String, Object> serviceMap, List<RpcInterceptor> interceptors) {
         this.serviceMap = serviceMap;
+        this.interceptors = interceptors;
     }
     
     @Override
@@ -38,7 +42,11 @@ public class RpcServerHandler extends SimpleChannelInboundHandler<RpcMessage> {
             try {
                 // 处理请求
                 RpcRequest request = (RpcRequest) msg.getData();
-                Object result = handleRequest(request);
+                // 添加客户端IP信息
+                String clientIp = ctx.channel().remoteAddress().toString();
+                request.setClientIp(clientIp);
+                
+                Object result = handleRequestWithInterceptors(request);
                 responseMsg.setData(RpcResponse.success(result));
             } catch (Exception e) {
                 log.error("处理请求异常", e);
@@ -48,6 +56,61 @@ public class RpcServerHandler extends SimpleChannelInboundHandler<RpcMessage> {
             // 发送响应
             ctx.writeAndFlush(responseMsg);
         }
+    }
+    
+    /**
+     * 使用拦截器处理RPC请求
+     *
+     * @param request RPC请求
+     * @return 调用结果
+     * @throws Exception 调用异常
+     */
+    private Object handleRequestWithInterceptors(RpcRequest request) throws Exception {
+        RpcResponse<Object> response = new RpcResponse<>();
+        
+        // 前置拦截器处理
+        for (RpcInterceptor interceptor : interceptors) {
+            try {
+                if (!interceptor.preProcess(request, response)) {
+                    // 拦截器拒绝请求，直接返回响应数据
+                    if (response.getData() != null) {
+                        throw new RuntimeException(response.getMessage());
+                    } else {
+                        throw new RuntimeException("请求被拦截器拒绝");
+                    }
+                }
+            } catch (Exception e) {
+                log.error("拦截器 {} 前置处理异常", interceptor.getClass().getSimpleName(), e);
+                throw e;
+            }
+        }
+        
+        Object result = null;
+        Exception exception = null;
+        
+        try {
+            // 执行实际的业务方法调用
+            result = handleRequest(request);
+        } catch (Exception e) {
+            exception = e;
+        }
+        
+        // 后置拦截器处理
+        for (int i = interceptors.size() - 1; i >= 0; i--) {
+            RpcInterceptor interceptor = interceptors.get(i);
+            try {
+                interceptor.postProcess(request, response);
+            } catch (Exception e) {
+                log.error("拦截器 {} 后置处理异常", interceptor.getClass().getSimpleName(), e);
+            }
+        }
+        
+        // 如果有异常则抛出
+        if (exception != null) {
+            throw exception;
+        }
+        
+        return result;
     }
     
     /**

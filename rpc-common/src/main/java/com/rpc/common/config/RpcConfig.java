@@ -5,12 +5,15 @@ import com.rpc.common.retry.RetryPolicy;
 import lombok.Builder;
 import lombok.Data;
 
+import java.io.Serializable;
+
 /**
  * RPC配置类
  */
 @Data
 @Builder
-public class RpcConfig {
+public class RpcConfig implements Serializable {
+    private static final long serialVersionUID = 1L;
     
     /**
      * 请求超时时间（毫秒）
@@ -91,6 +94,12 @@ public class RpcConfig {
     private int zookeeperConnectionTimeout = 10000;
     
     /**
+     * 连接池配置
+     */
+    @Builder.Default
+    private ConnectionPoolConfig connectionPoolConfig = ConnectionPoolConfig.defaultConfig();
+    
+    /**
      * 获取默认配置
      */
     public static RpcConfig defaultConfig() {
@@ -108,6 +117,7 @@ public class RpcConfig {
                 .compressionType("none")
                 .loadBalanceStrategy("roundrobin")
                 .retryEnabled(false)
+                .connectionPoolConfig(ConnectionPoolConfig.highPerformanceConfig())
                 .build();
     }
     
